@@ -7,15 +7,6 @@ from collections import Counter
 import argparse
 
 
-#File paths
-'''The files were retrieved with git clone http....'''
-# training_file = '/Users/athenamarounka/Documents/master/python/project_kantale/DDI-Bench/DDI_Ben/DDI_Ben/data/drugbank_random/train.txt'
-# relations_json_file = '/Users/athenamarounka/Documents/master/python/project_kantale/DDI-Bench/DDI_Ben/TextDDI/data/drugbank_random/relation2id.json'
-# molecular_feat_picke_file = '/Users/athenamarounka/Documents/master/python/project_kantale/DDI-Bench/DDI_Ben/DDI_Ben/data/initial/drugbank/DB_molecular_feats.pkl'
-# test_file = '/Users/athenamarounka/Documents/master/python/project_kantale/DDI-Bench/DDI_Ben/DDI_Ben/data/drugbank_random/test_S0.txt'
-
-
-
 class Drug:
     '''
     Contains the information and relations for drugs
@@ -33,7 +24,7 @@ class DDIClassifier:
     def __init__(self, mf_weight = 0.5, rd_weight = 0.5):
         self.mf_weight = mf_weight
         self.rd_weight = rd_weight
-        self.train_pairs = [] #για αποθήκευση tuples: drug_a, drug_b, relation_id
+        self.train_pairs = [] # to store tuples: drug_a, drug_b, relation_id
 
     def tanimoto_distance(self, v1, v2): #v1, v2 stand for vector 1 vector 2
         #1-(intersection/union)
@@ -46,51 +37,51 @@ class DDIClassifier:
 
     def fit(self, training_data, drug_map):
         """
-        training_data: Λίστα από [id1, id2, relation]
-        drug_map: Το λεξικό με τα αντικείμενα Drug
+        training_data: List of [id1, id2, relation]
+        drug_map: Dictionary containing Drug objects
         """
-        for id1, id2, relation in training_data:  #διατρέχουμε κάθε γνωστή αλληλεπίδραση από το train.txt
-            if id1 in drug_map and id2 in drug_map: #ελέγχω αν τα molecular features και για τα 2 φάρμακα υπάρχουν
-                #δημιουργία μνήμης για τα δύο φάρμακα και την σχέση τους
+        for id1, id2, relation in training_data:  # iterating through every known interaction from train.txt
+            if id1 in drug_map and id2 in drug_map: # check if molecular features exist for both drugs
+                # create a memory for both drugs and their relation
                 self.train_pairs.append((drug_map[id1], drug_map[id2], relation))
 
     def prediction(self, test_drug_a, test_drug_b, k=1):
         """
-        test_drug_a, test_drug_b: Αντικείμενα της κλάσης Drug
+        test_drug_a, test_drug_b: Objects of the Drug class
         """
         all_distances = []
 
         for train_a, train_b, relation in self.train_pairs:
-            #Υπολογισμός απόστασης Morgan (Tanimoto): πόσα κοινά δομικά στοιχεία έχουν δύο μόρια σε σχέση με το σύνολο των στοιχείων τους.
-            #συγκρίνω το test a με το train a και το test b με το train b
+            # Calculating Morgan (Tanimoto) distance: how many common structural elements two molecules have relative to their total elements.
+            # comparing test_a with train_a and test_b with train_b
             morgan_dist_a= self.tanimoto_distance(test_drug_a.morgan, train_a.morgan)
             morgan_dist_b = self.tanimoto_distance(test_drug_b.morgan, train_b.morgan)
             mf_distance = (morgan_dist_a+morgan_dist_b)/2
 
-            #Υπολογισμός RDKit2D Distance (Cosine).cosine: μετράει την γωνία των διανυσμάτων στον χώρο:αν δυο φάρμακα έχουν παρόμοιες φυσικοχημικές ιδιοτητες, τα διανύσματά τους κοιτάνε προς την ίδια κατεύθυνση.
-            #scipy cosine επιστρέφει 1-similarity
+            # Calculating RDKit2D Distance (Cosine). cosine: measures the angle of vectors in space: if two drugs have similar physicochemical properties, their vectors point in the same direction.
+            # scipy cosine returns 1-similarity
             rdkit_dist_a = cosine(test_drug_a.rdkit, train_a.rdkit)
             rdkit_dist_b = cosine(test_drug_b.rdkit, train_b.rdkit)
             rd_distance = (rdkit_dist_a+rdkit_dist_b)/2
 
-            #Συνδυασμένη απόσταση με βάρη 0.5
+            # Combined distance with 0.5 weights
             total_distance = (self.mf_weight * mf_distance) + (self.rd_weight * rd_distance)
 
-            #Αποθήκευση απόστασης μαζί με το id της σχέσης
+            # Storing the distance along with the relation id
             all_distances.append((total_distance, relation))
 
-        #Ταξινόμηση από μικρότερη προς μεγαλύτερη απόσταση
+        # Sorting from smallest to largest distance
         all_distances.sort(key = lambda x:x[0])
 
-        #k-nearest neighbours
+        # k-nearest neighbours
         k_neighbours = [relation for dist, relation in all_distances[:k]]
 
-        #Ποια σχέση εμφανίζεται συχνότερα
+        # Which relation appears most frequently
         most_common_relation = Counter(k_neighbours).most_common(1)[0][0]
 
         return most_common_relation
 
-#EKTELESI
+# EXECUTION
 def main():
     parser = argparse.ArgumentParser(description='DDI Prediction Tool')
     parser.add_argument('--molecular_feats', required=True)
@@ -106,13 +97,13 @@ def main():
 
 
 
-#Φόρτωση molecular features and mapping Drug Bank ids
+# Loading molecular features and mapping Drug Bank ids
 
     with open(args.molecular_feats, 'rb') as f:
         data_p = pickle.load(f)
         
 
-    drug_search = {} #mapping dictionary node_id-->Drug_object
+    drug_search = {} # mapping dictionary node_id --> Drug_object
     db_id_to_node = {}
 
 
@@ -123,26 +114,26 @@ def main():
         drug_search[node_id] = drug_obj
         db_id_to_node[db_id] = node_id
 
-#Φόρτωση training data
+# Loading training data
 
     training_list = []
 
     with open(args.train, 'r') as f:
         for line in f:
-            parts = list(map(int, line.split())) #σπάει την γραμμή και μετατρέπει τα strings σε αριθμούς
+            parts = list(map(int, line.split())) # splits the line and converts strings to integers
             training_list.append(parts)
 
-#Φόρτωση rerlations JSON file
+# Loading relations JSON file
     with open(args.relation2id, 'r') as f:
         relations_map = json.load(f)
 
-#ΑΡΧΙΚΟΠΟΙΗΣΗ ΤΟΥ CLASSIFIER
+# INITIALIZING THE CLASSIFIER
 
     classifier = DDIClassifier(mf_weight=0.5, rd_weight=0.5)
     classifier.fit(training_list, drug_search)
 
     if args.mode == 'train':
-        #Ανάγνωση test file και υπολογισμός accuracy
+        # Reading test file and calculating accuracy
         correct_predictions = 0
         total_tested = 0
 
@@ -150,7 +141,7 @@ def main():
         with open(args.test, 'r') as f:
             lines = f.readlines()
             if args.cutoff:
-                lines = lines[:args.cutoff] #σε περίπτωση που θέσουμε κάποιο cutoff για ταχύτητα
+                lines = lines[:args.cutoff] # in case we set a cutoff for speed
 
             for i, line in enumerate(lines):
                 t_a_id, t_b_id, true_relation = map(int, line.split())
@@ -167,7 +158,7 @@ def main():
         accuracy = correct_predictions/total_tested
         print(f"\nFINAL ACCURACY FOR {total_tested} samples, correct: {correct_predictions},  accuracy: {accuracy:.2f}")
 
-    #ΛΕΙΤΟΥΡΓΙΑ inference - Prediction
+    # Inference Mode - Prediction
 
     elif args.mode == 'inference':
         id1 = db_id_to_node.get(args.drugbank_1)
@@ -175,7 +166,7 @@ def main():
 
         if id1 is not None and id2 is not None:
             pred_id = classifier.prediction(drug_search[id1], drug_search[id2], k=1)
-            #Ανάκτηση της περιγραφής από το JSON
+            # Retrieving the description from JSON
             rel_desc = relations_map.get(str(pred_id), "Unknown Relation")
             print(f"Prediction: {rel_desc}")
         else:
@@ -187,13 +178,13 @@ if __name__ == "__main__":
 
 
 '''
-Inference Mode, ο χρήστης δίνει DrugBank IDs (π.χ. DB13231).
-Ο κώδικας όμως στο training και testing δουλεύει με ακέραια Node IDs (π.χ. 0, 1, 2).
-Tο λεξικό db_id_to_node κάνει τη μετάφραση.
-Αν ο χρήστης επιλέξει inference, το πρόγραμμα βρίσκει
-τα molecular features των δύο φαρμάκων, κάνει την πρόβλεψη
-και μετά ψάχνει στο relation2id.json για να  εκτυπώσει την πλήρη 
-περιγραφή της αλληλεπίδρασης
+Inference Mode: The user provides DrugBank IDs (e.g., DB13231).
+However, the code works with integer Node IDs (e.g., 0, 1, 2) during training and testing.
+The db_id_to_node dictionary handles the translation.
+If the user selects inference, the program finds
+the molecular features of the two drugs, makes the prediction,
+and then searches relation2id.json to print the full
+interaction description.
 '''
 
 '''
